@@ -236,10 +236,14 @@ DEFINE_string(mean_value, "104,117,123",
     "Either mean_file or mean_value should be provided, not both.");
 DEFINE_string(file_type, "image",
     "The file type in the list_file. Currently support image and video.");
+DEFINE_string(out_imgs_dir, "",
+	"Save annotated output images");
 DEFINE_string(out_file, "",
     "If provided, store the detection results in the out_file.");
 DEFINE_double(confidence_threshold, 0.01,
     "Only store detections with score higher than the threshold.");
+DEFINE_int32(thickness, 1,
+    "Lines thickness for drawing output detections.");
 
 int main(int argc, char** argv) {
   ::google::InitGoogleLogging(argv[0]);
@@ -266,6 +270,8 @@ int main(int argc, char** argv) {
   const string& mean_value = FLAGS_mean_value;
   const string& file_type = FLAGS_file_type;
   const string& out_file = FLAGS_out_file;
+  const string& out_imgs_dir = FLAGS_out_imgs_dir;
+  const int thickness = FLAGS_thickness;
   const float confidence_threshold = FLAGS_confidence_threshold;
 
   // Initialize the network.
@@ -284,6 +290,7 @@ int main(int argc, char** argv) {
 
   // Process image one by one.
   std::ifstream infile(argv[3]);
+  CHECK(infile) << "Can't open listfile " << argv[3];
   std::string file;
   while (infile >> file) {
     if (file_type == "image") {
@@ -307,6 +314,31 @@ int main(int argc, char** argv) {
           out << static_cast<int>(d[6] * img.rows) << std::endl;
         }
       }
+
+      /* Save annotated images. */
+	  if (!out_imgs_dir.empty()) {
+		cv::Mat out_img = img.clone();
+		for (int i = 0; i < detections.size(); ++i) {
+	      const vector<float>& d = detections[i];
+	      CHECK_EQ(d.size(), 7);
+	      const float score = d[2];
+		  if (score >= confidence_threshold) {
+			const cv::Scalar color(0, 0, 255);
+			cv::rectangle(out_img, cv::Rect(
+				cv::Point(d[3] * img.cols, d[4] * img.rows),
+				cv::Point(d[5] * img.cols, d[6] * img.rows)),
+				color, thickness
+			);
+		  }
+		}
+		std::string out_img_name = std::string(std::find_if(
+		  file.rbegin(), file.rend(), [](const char & s) {
+			return s == '\\' || s == '/';
+		  }).base(), file.end()
+		);
+		std::string out_img_path = out_imgs_dir + '/' + out_img_name;
+		cv::imwrite(out_img_path, out_img);
+	  }
     } else if (file_type == "video") {
       cv::VideoCapture cap(file);
       if (!cap.isOpened()) {
